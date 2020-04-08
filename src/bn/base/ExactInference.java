@@ -66,6 +66,7 @@ public class ExactInference implements Inferencer {
     }
     public static void main(String[] argv) throws IOException, ParserConfigurationException, SAXException {
         BayesianNetwork BN = new bn.base.BayesianNetwork();
+        
         /* 
         * Check the format of input file
         */

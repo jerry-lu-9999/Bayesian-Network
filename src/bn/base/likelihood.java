@@ -2,6 +2,8 @@ package bn.base;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 import javax.xml.parsers.ParserConfigurationException;
@@ -17,59 +19,55 @@ import bn.core.Value;
 import bn.parser.BIFParser;
 import bn.parser.XMLBIFParser;
 
-public class Rejection implements Inferencer {
+public class likelihood implements Inferencer {
 
     @Override
     public Distribution query(RandomVariable X, Assignment e, BayesianNetwork network) {
         // TODO Auto-generated method stub
         return null;
     }
-    
-    public static Assignment priorSample(BayesianNetwork bn, Assignment e){
+
+    public static ArrayList<Object> weightSample(BayesianNetwork bn, Assignment e){
+        ArrayList<Object> al = new ArrayList<>();
         Random rd = new Random();
+        double weight = 1.0;
         Assignment ass = e.copy();
         for(RandomVariable var : bn.getVariablesSortedTopologically()){
-            double random = rd.nextDouble();
-            double sum = 0.0;
-            for(Value v : var.getDomain()) {
-                ass.put(var,v);
-                double p = bn.getProbability(var, ass);
-                sum += p;
-                if(random > sum){
-                    ass.remove(var, v);
-                }else{
-                    break;
+            if(ass.get(var) != null){
+                weight = weight * bn.getProbability(var, ass);
+            }else{
+                double random = rd.nextDouble();
+                double sum = 0.0;
+                for(Value v : var.getDomain()) {
+                    ass.put(var,v);
+                    double p = bn.getProbability(var, ass);
+                    sum += p;
+                    if(random > sum){
+                        ass.remove(var, v);
+                    }else{
+                        break;
+                    }
                 }
             }
         }
-        return ass;
+        al.add(ass);    al.add(weight);
+        return al;
     }
 
-    public static Distribution rejection(RandomVariable X, Assignment e, BayesianNetwork bn, int N){
-        Distribution d = new bn.base.Distribution(X);
-        for(Value v : X.getDomain()){
-            d.put(v, 0.0);
+    public static Distribution Weighting(RandomVariable X, Assignment ass, BayesianNetwork bn, int N) {
+        Distribution W = new bn.base.Distribution(X);
+        for(Value v : X.getDomain()) {
+            W.put(v, 0.0);
         }
         for(int j = 1; j <= N; j++){
-            Assignment ass = priorSample(bn, e);
-            if(isConsistent(ass, e)){
-                Value value = ass.get(X);
-                d.put(value, d.get(value) + 1.0);
-            }
+            ArrayList<Object> arr = weightSample(bn, ass);
+            Assignment e = (Assignment) arr.get(0);
+            double weight = (double) arr.get(1);
+            Value v = e.get(X);
+            W.put(v, W.get(v) + weight);
         }
-        d.normalize();
-        return d;
-    }
-
-    public static boolean isConsistent(Assignment a, Assignment b){
-        for(RandomVariable ran : a.keySet()){
-            if(b.containsKey(ran)){
-                if(!b.get(ran).toString().equals(a.get(ran).toString())){
-                    return false;
-                }
-            }
-        }
-        return true;
+        W.normalize();
+        return W;
     }
     public static void main(String[] argv) throws IOException, ParserConfigurationException, SAXException {
         BayesianNetwork BN = new bn.base.BayesianNetwork();
@@ -101,7 +99,9 @@ public class Rejection implements Inferencer {
             RandomVariable ran = BN.getVariableByName(argv[i]);
             ass.put(ran, new StringValue(argv[i+1]));
         }
-        Distribution dist = rejection(queryVariable, ass, BN, sampleSize);
+        System.out.println(queryVariable.getDomain());
+        Distribution dist = Weighting(queryVariable, ass, BN, sampleSize);
         System.out.println(argv[2] + " has probability distribution as " + dist);
     }
+
 }

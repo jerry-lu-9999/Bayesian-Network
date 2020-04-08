@@ -98,7 +98,7 @@ public class BayesianNetwork implements bn.core.BayesianNetwork {
 				}
 			}
 		}
-		throw new NoSuchElementException();
+		throw new NoSuchElementException("Check Your Variable Name Again Por Favor!");
 	}
 
 	/**
