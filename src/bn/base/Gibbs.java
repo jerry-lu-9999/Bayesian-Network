@@ -3,23 +3,26 @@ package bn.base;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Random;
-
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.Iterator;
 import javax.xml.parsers.ParserConfigurationException;
 
 import org.xml.sax.SAXException;
-
+import bn.core.Value;
 import bn.core.Assignment;
 import bn.core.BayesianNetwork;
 import bn.core.Distribution;
 import bn.core.Inferencer;
 import bn.core.RandomVariable;
-import bn.core.Value;
 import bn.parser.BIFParser;
 import bn.parser.XMLBIFParser;
+import bn.util.ArraySet;
 
-public class likelihood implements Inferencer {
+public class Gibbs implements Inferencer {
 
     @Override
     public Distribution query(RandomVariable X, Assignment e, BayesianNetwork network) {
@@ -27,48 +30,58 @@ public class likelihood implements Inferencer {
         return null;
     }
 
-    public static ArrayList<Object> weightSample(BayesianNetwork bn, Assignment e){
-        ArrayList<Object> al = new ArrayList<>();
+    private static Distribution gibbs(RandomVariable X, Assignment ass, BayesianNetwork bn, int size) {
         Random rd = new Random();
-        double weight = 1.0;
-        Assignment ass = e.copy();
-        for(RandomVariable var : bn.getVariablesSortedTopologically()){
-            if(ass.get(var) != null){
-                weight = weight * bn.getProbability(var, ass);
-            }else{
-                double random = rd.nextDouble();
+        Distribution N = new bn.base.Distribution(X);
+        for (Value v : X.getDomain()) {
+            N.put(v, 0.0);
+        }
+        /*
+         * All nonevidence variable in bn
+         */
+        Set<RandomVariable> nonevidence = new ArraySet<>();
+        for(RandomVariable var : bn.getVariables()){
+            if(!ass.containsKey(var)){
+                nonevidence.add(var);
+            }
+        }
+
+        /*
+         *  initialize ass with random values for the variables in Z (nonevidence variables)
+         */
+        for (RandomVariable var : nonevidence) {
+            List<Value> al = ((Collection<Value>) var.getDomain()).stream().collect(Collectors.toList());
+            ass.put(var, al.get(rd.nextInt(al.size())));
+        }
+
+        System.out.println(ass);
+        for(int j = 1; j <= size; j++){
+            for(RandomVariable z : nonevidence){
+                Set<RandomVariable> children = bn.getChildren(z);
+                double product = bn.getProbability(z, ass);
+                for(RandomVariable child : children){
+                    product *= bn.getProbability(child, ass);
+                }
+                
+                //System.out.println(product);
                 double sum = 0.0;
-                for(Value v : var.getDomain()) {
-                    ass.put(var,v);
-                    double p = bn.getProbability(var, ass);
+                for(Value v : z.getDomain()) {
+                    ass.put(z,v);
+                    double p = bn.getProbability(z, ass);
                     sum += p;
-                    if(random > sum){
-                        ass.remove(var, v);
-                    }else{
+                    if(product <= sum){
                         break;
                     }
                 }
+                Value v = ass.get(z);
+                N.put(v, N.get(v) + 1.0);
             }
         }
-        al.add(ass);    al.add(weight);
-        return al;
+        System.out.println(N);
+        N.normalize();
+        return N;
     }
 
-    public static Distribution Weighting(RandomVariable X, Assignment ass, BayesianNetwork bn, int N) {
-        Distribution W = new bn.base.Distribution(X);
-        for(Value v : X.getDomain()) {
-            W.put(v, 0.0);
-        }
-        for(int j = 1; j <= N; j++){
-            ArrayList<Object> arr = weightSample(bn, ass);
-            Assignment e = (Assignment) arr.get(0);
-            double weight = (double) arr.get(1);
-            Value v = e.get(X);
-            W.put(v, W.get(v) + weight);
-        }
-        W.normalize();
-        return W;
-    }
     public static void main(String[] argv) throws IOException, ParserConfigurationException, SAXException {
         BayesianNetwork BN = new bn.base.BayesianNetwork();
 
@@ -99,8 +112,7 @@ public class likelihood implements Inferencer {
             RandomVariable ran = BN.getVariableByName(argv[i]);
             ass.put(ran, new StringValue(argv[i+1]));
         }
-        Distribution dist = Weighting(queryVariable, ass, BN, sampleSize);
+        Distribution dist = gibbs(queryVariable, ass, BN, sampleSize);
         System.out.println(argv[2] + " has probability distribution as " + dist);
     }
-
 }
